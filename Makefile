@@ -66,10 +66,14 @@ buildah-build: check-builder load-version-json ## Build and push image (multi-ar
 	  done; \
 	  buildah manifest push --all $(IMG) docker://$(IMG); \
 	elif [ "$(BUILDER)" = "docker" ]; then \
-	  echo "🐳 Docker detected: Building with buildx..."; \
-	  - docker buildx create --use --name image-builder || true; \
-	  docker buildx use image-builder; \
-	  docker buildx build --push --platform=$(PLATFORMS) --tag $(IMG) -f build/Dockerfile . || exit 1; \
+	  echo "🐳 Docker detected: Building with buildx (sequential per arch)..."; \
+	  docker buildx create --use --name image-builder || true; \
+	  docker buildx use image-builder || true; \
+	  for arch in amd64 arm64; do \
+	    echo "📦 Building for architecture: $$arch"; \
+	    docker buildx build --push --platform=linux/$$arch --tag $(IMG)-$$arch -f build/Dockerfile . || exit 1; \
+	  done; \
+	  docker buildx imagetools create -t $(IMG) $(IMG)-amd64 $(IMG)-arm64 || exit 1; \
 	  docker buildx rm image-builder || true; \
 	elif [ "$(BUILDER)" = "podman" ]; then \
 	  echo "⚠️ Podman detected: Building single-arch image..."; \

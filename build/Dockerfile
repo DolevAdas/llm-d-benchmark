@@ -54,16 +54,24 @@ WORKDIR /workspace
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
 ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=e3e690ba3589cfa422138de696f8b5217a3aa854
-RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
+ARG INFERENCE_PERF_COMMIT=274729877d29f573335c8c3340666a14e31938ba
+RUN for i in 1 2 3; do git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO} && break || sleep 5; done
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
-    pip install .
+    sed -i \
+        -e 's/"transformers==[^"]*"/"transformers>=4.47.0"/' \
+        -e 's/"boto3==[^"]*"/"boto3>=1.26.0"/' \
+        pyproject.toml; \
+    pip install --timeout=300 --retries=3 --no-deps . && \
+    pip install --timeout=300 --retries=3 \
+        "aiohttp>=3.11.11" "pydantic>=2.10.6" "numpy>=2.2.2" "datasets>=3.3.2" \
+        "transformers>=4.47.0" "google-cloud-storage>=3.1.0" "pyyaml>=6.0.2" \
+        "boto3>=1.26.0" "uvloop>=0.21.0" "tqdm>=4.67.1" "aiofiles>=25.1.0" "tiktoken>=0.12.0"
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
 ARG VLLM_BENCHMARK_BRANCH=main
 ARG VLLM_BENCHMARK_COMMIT=f176443446f659dbab5315e056e605d8984fd976
-RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
+RUN for i in 1 2 3; do git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO} && break || sleep 5; done
 RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
 # Patch the pyproject.toml to allow "pip install -e ."
 RUN cd vllm; printf '%s\n' \
@@ -81,19 +89,19 @@ RUN cd vllm; printf '%s\n' \
     ' classifiers = [' \
     | git apply
 # Install some pre-reqs
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install setuptools-scm scikit-build-core
+RUN pip install --timeout=300 --retries=3 torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --timeout=300 --retries=3 setuptools-scm scikit-build-core
 # Install
-RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
+RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install --timeout=300 --retries=3 -e . --no-build-isolation
 
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
 ARG GUIDELLM_BRANCH=main
 ARG GUIDELLM_COMMIT=f9f1e3181274b7fecb615158f7bde48b9d20001d
-RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
+RUN for i in 1 2 3; do git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO} && break || sleep 5; done
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
-    pip install .[recommended]
+    pip install --timeout=300 --retries=3 .[recommended]
 
 ARG INFERENCEMAX_REPO=https://github.com/kimbochen/bench_serving.git
 ARG INFERENCEMAX_BRANCH=main
@@ -122,9 +130,10 @@ RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
 COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt
 RUN pip install -e /opt
-
+ 
 ADD ../setup/preprocess /preprocess
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 
 ENTRYPOINT ["llm-d-benchmark.sh"]
+
